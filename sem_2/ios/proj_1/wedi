@@ -1,0 +1,243 @@
+#!/bin/sh
+POSIXLY_CORRECT=yes
+
+#-------------------FUNCTIONS--------------------------
+
+start_edit() { #funkcia spusta editor a zapisuje do suboru zaznamy
+    editor=${EDITOR-${VISUAL-vi}}
+
+    $editor "$1"
+    
+    ret=$?
+    if [ -f $1 ] 
+    then
+        file=$1
+        echo "${file##*/}:$(realpath "${file}"):$(date +%Y-%m-%d)" >> $WEDI
+    fi
+    exit $ret
+}
+
+#----------------END-OF-FUNCTIONS------------------------
+path=${WEDI_RC?"ERROR:Variable WEDI_RC doesn't set"}
+if ! [ -f $path ]
+then #ak neexistuje cesta ulozena vo WEDI_RC vytvori ju
+    mkdir -p "$(dirname "$path")" && touch "$path"
+fi
+WEDI=`realpath "$WEDI_RC"`
+
+which realpath >/dev/null
+if [ $? -ne 0 ]
+then
+    echo "ERROR: Util \"realpath\" wasn't found"
+    exit 1
+fi
+
+if [ $# -ge 4 ]
+then
+    echo "ERROR: Too many arguments" >&2
+    exit 1
+fi
+
+if [ $# -eq 0 ] #spustenie bez argumentov
+then
+    # vyber zo suboru posledny editovany subor v aktualnom adresary a spusti
+    filesInPath=`tail -r $WEDI | grep "$(realpath .)/[^/]*$"`
+    for file in $filesInPath
+    do
+        fileName=`echo $file | cut -d':' -f1`
+        if [ -f $fileName ]
+        then
+            start_edit $fileName
+            exit 0
+        fi
+    done
+    echo "ERROR: There was no file edited by wedi in actuall directory"
+    exit 1
+
+elif [ -d "$1" ] && [ $# -eq 1 ]
+then
+    #vyber zo suboru posledny editovany subor v zadanom adresary a spusti
+    path=$1
+    filesInPath=`tail -r $WEDI | grep "$(realpath $path)/[^/]*$"`
+    for file in $filesInPath
+    do
+        fileName=`echo $file | cut -d':' -f2`
+        if [ -f $fileName ]
+        then
+            start_edit $fileName
+            exit 0
+        fi
+    done
+    echo "ERROR: There was no file edited by wedi in selected directory"
+    exit 1
+
+
+elif [ -f "$1" ] && [ $# -eq 1 ]
+then #spusti subor zadany argumentom
+    start_edit $1
+    exit 0
+fi
+
+while getopts :a:b:ml o
+do case "$o" in
+    a) option=""$option"a";;
+    b) option=""$option"b";;
+    m) option=""$option"m";;
+    l) option=""$option"l";;
+    *) echo "WRONG OPTIONS: Use options a/b with a date parameter, or m or l,
+        or file ,or directory." >&2;exit 1;;
+    esac
+done
+
+if [ "${#option}" -gt 1 ]
+then
+    echo "WRONG OPTIONS: Use only one option" >&2
+    exit 1
+fi
+#-----------------------------OPT-A------------------------------
+if [ "$option" = "a" ]
+then
+    if [ $# -eq 1 ]
+    then
+        echo "ERROR: few arguments, add date in format YYYY-MM-DD" >&2
+        exit 1
+    fi
+     
+    echo "$2" | grep -qE "[0-9]{4}-[0-9]{2}-[0-9]{2}"
+    if [ $? -ne 0 ]
+    then
+        echo "ERROR: Wrong format of date. Use format YYYY-MM-DD" >&2
+        exit 1
+    fi
+    
+    inputDate=`echo "$2" | sed "s/-//g"` #datum bez '-'
+
+    if [ $# -eq 2 ]
+    then
+        path=`realpath "."`
+    elif [ $# -eq 3 ]
+    then
+        path=`realpath "$3"`
+    fi
+    filesInPath=`grep "$path/[^/]*$" "$WEDI"`
+    for file in $filesInPath
+    do
+        fileDate=`echo $file |cut -d':' -f3 | sed "s/-//g"`
+        if [ $fileDate -ge $inputDate ]                    
+        then
+            resultNames="$resultNames `echo $file |cut -d':' -f2`" 
+        fi
+    done
+    
+    for name in `echo $resultNames`
+    do
+        if [ -f $name ] 
+        then
+            echo $name
+        fi
+    done | sort | uniq
+
+#-----------------------------END-A------------------------------        
+elif [ "$option" = "b" ]
+then
+        if [ $# -eq 1 ]
+    then
+        echo "ERROR: few arguments, add date in format YYYY-MM-DD" >&2
+        exit 1
+    fi
+
+    echo "$2" | grep -qE "[0-9]{4}-[0-9]{2}-[0-9]{2}"
+    if [ $? -ne 0 ]
+    then
+        echo "ERROR: Wrong format of date. Use format YYYY-MM-DD" >&2
+        exit 1
+    fi
+     
+    inputDate=`echo "$2" | sed "s/-//g"` #datum bez '-'
+
+    if [ $# -eq 2 ]
+    then
+        path=`realpath "."`
+    elif [ $# -eq 3 ]
+    then
+        path=$3
+    fi
+    filesInPath=`grep "$path/[^/]*$" "$WEDI"`
+    for file in $filesInPath
+    do
+        fileDate=`echo $file |cut -d':' -f3 | sed "s/-//g"`
+        if [ $fileDate -lt $inputDate ]                    
+        then
+            resultNames="$resultNames `echo $file |cut -d':' -f2`" 
+        fi
+    done
+    
+   for name in `echo $resultNames`
+    do
+        if [ -f $name ] 
+        then
+            echo $name
+        fi
+    done | sort | uniq
+ 
+#-----------------------------END-B------------------------------
+elif [ "$option" = "m" ]
+then
+    if [ $# -eq 1 ]
+    then
+        path=`realpath "."`
+    elif [ $# -eq 2 ]
+    then
+        path=$(realpath "$2")
+    elif [ $# -gt 2 ]
+    then
+        echo "ERROR: Too many arguments." >&2
+    fi
+    filesInPath=`grep "$path/[^/]*$" "$WEDI" | cut -d':' -f2 | sort | uniq -c | sort -r`   
+    for name in `echo $filesInPath`
+    do
+        if [ -f $name ]
+        then
+            start_edit $name
+            exit 0
+        fi
+    done 
+
+#-----------------------------END-M------------------------------
+elif [ "$option" = "l" ]
+then
+    if [ $# -eq 1 ]
+    then
+        path=`realpath "."`
+    elif [ $# -eq 2 ]
+    then
+        path=$(realpath "$2")
+     elif [ $# -gt 2 ]
+    then
+        echo "ERROR: Too many arguments." >&2
+    fi
+    filesInPath=`grep "$path/[^/]*$" "$WEDI" | cut -d':' -f2 | sort | uniq`
+
+    for name in $filesInPath
+    do
+        if [ -f $name ]
+        then
+            echo $name
+        fi    
+    done 
+
+#-----------------------------END-L------------------------------
+
+elif [ $# -eq 1 ]
+then
+        if ! [ -d "$(dirname "$1")" ]
+        then #ak neexistuje cesta vytvori ju
+            mkdir -p "$(dirname "$1")"
+        fi 
+
+    start_edit $1
+else
+    #echo "ERROR: Unsupported arguments. Use options a/b with a date parameter, or m or l, or file ,or directory." >&2
+    exit 1
+fi
+
