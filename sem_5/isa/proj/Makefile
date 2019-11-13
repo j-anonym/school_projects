@@ -4,8 +4,8 @@
 OBJECTS := $(patsubst %.c,%.o,$(wildcard *.cpp))
 CC=g++
 NAME=d6r
-CFLAGS=-Wall -pedantic -Wextra -g
-LIBS=-lpcap
+CFLAGS=-Wall -pedantic -Wextra -g -std=c++11
+LIBS=-lpcap -pthread
 
 all: $(NAME)
 

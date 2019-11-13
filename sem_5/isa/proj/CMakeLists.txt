@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 project(proj)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -pthread")
 
 SET(GCC_COVERAGE_LINK_FLAGS    "-lpcap")
 
