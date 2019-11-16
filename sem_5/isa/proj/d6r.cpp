@@ -16,12 +16,14 @@
 #include <linux/ipv6.h>
 #include <cstring>
 #include <unistd.h>
+#include <syslog.h>
 #include <thread>
 #include <vector>
+#include <map>
+#include <iostream>
+#include <getopt.h>
 
 using namespace std;
-
-#define ERR_BUFF_SIZE 256
 
 #define ETHERNET_HDRLEN (14)    // Ethernet header length
 #define IP6_HDRLEN (40)         // IPv6 header length
@@ -36,7 +38,17 @@ using namespace std;
 
 #define PORT (547)
 #define PORT_CLIENT (546)
-#define SERVADDR "2001:67c:1220:80c::93e5:dd2" //TODO argument
+
+map<string, string> mac_addr_map;
+
+typedef struct arguments {
+    char *server_arg;
+    char *interface;
+    bool log_enabled;
+    bool debug_enabled;
+} t_arguments;
+
+t_arguments args_cli;
 
 typedef struct relay_forward_message {
     uint8_t msg_type;
@@ -61,7 +73,7 @@ typedef struct relay_option_ll_address {
 
 void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char *packet);
 
-void sniff_for_client();
+void sniff_for_client(pcap_if_t *int_to_be_sniffed);
 
 struct udphdr *get_udph_from_ipv6h(struct ipv6hdr *);
 
@@ -69,25 +81,75 @@ void process_msg_from_server(const char *buffer, int read_count);
 
 void server_service(struct sockaddr_in6 server);
 
-
-pcap_if_t *int_to_be_sniffed = NULL;
-struct in6_addr ip6_link_address;
-
+void print_usage() {
+    printf("USAGE:# ./d6r -s server [-l] [-d] [-i interface]\n");
+}
 
 int main(int argc, char *argv[]) {
+    int opt;
+    args_cli.interface = NULL;
+    args_cli.server_arg = NULL;
+    args_cli.debug_enabled = false;
+    args_cli.log_enabled = false;
+
+    while ((opt = getopt(argc, argv, ":s:ldi:")) != -1) {
+        switch (opt) {
+            case 's':
+                args_cli.server_arg = optarg;
+                break;
+            case 'l':
+                args_cli.log_enabled = true;
+                break;
+            case 'd':
+                args_cli.debug_enabled = true;
+                break;
+            case 'i':
+                args_cli.interface = optarg;
+                break;
+            case ':':
+                fprintf(stderr, "ERROR option '-s' needs a value\n");
+                print_usage();
+                exit(1);
+                break;
+            case '?':
+                fprintf(stderr, "unknown option: %c\n", optopt);
+                print_usage();
+                exit(1);
+                break;
+        }
+    }
+
+    // optind is for the extra arguments that are not parsed
+    if (optind < argc) {
+        fprintf(stderr, "ERROR unrecognized extra argument: %s\n", argv[optind]);
+        print_usage();
+        exit(1);
+    }
+
+    if (!args_cli.server_arg) {
+        fprintf(stderr, "ERROR: argument with server ipv6 address '-s' is compulsory");
+        print_usage();
+        exit(1);
+    }
+
+
     char errbuff[PCAP_ERRBUF_SIZE];
 
     struct sockaddr_in6 server = {.sin6_family=AF_INET6, .sin6_port=htons(PORT)};
-    inet_pton(AF_INET6, SERVADDR, &server.sin6_addr);
+    if (inet_pton(AF_INET6, args_cli.server_arg, &server.sin6_addr) == 0) {
+        fprintf(stderr, "ERROR: Wrong IPv6 of server (-s)\n");
+        print_usage();
+        exit(1);
+    }
 
-    //TODO args
+    openlog("ISA-DHCP-RELAY-LOG", LOG_NDELAY, LOG_DAEMON);
+
     pcap_if_t *interfaces, *temp;
     if (pcap_findalldevs(&interfaces, errbuff) == -1) {
         err(1, "pcap_findalldevs() failed");
     }
 
     vector<pcap_if_t *> interfaces_to_be_sniffed;
-    char *tmp;
 
     for (temp = interfaces; temp != NULL; temp = temp->next) {
         pcap_addr_t *dev_addr; //addresses from pcap_findalldevs
@@ -95,55 +157,44 @@ int main(int argc, char *argv[]) {
         //check for capturable inferfaces with IPv6
         for (dev_addr = temp->addresses; dev_addr != NULL; dev_addr = dev_addr->next) {
             if (dev_addr->addr->sa_family == AF_INET6 && dev_addr->addr && dev_addr->netmask) {
-                char ip6[INET6_ADDRSTRLEN];
-                char ip6_netmask[INET6_ADDRSTRLEN];
 
-                inet_ntop(AF_INET6, &(((struct sockaddr_in6 *) dev_addr->addr)->sin6_addr), ip6, INET6_ADDRSTRLEN);
-                inet_ntop(AF_INET6, (struct sockaddr_in6 *) dev_addr->netmask, ip6_netmask, INET6_ADDRSTRLEN);
-                printf("Found a device %-10s on address %s with netmask %s\n", temp->name, ip6, ip6_netmask);
-                tmp = temp->name;
-                if (interfaces_to_be_sniffed.empty() || strcmp(tmp, interfaces_to_be_sniffed.back()->name) != 0)
-                    interfaces_to_be_sniffed.push_back(temp);
-
+                if (interfaces_to_be_sniffed.empty() || strcmp(temp->name, interfaces_to_be_sniffed.back()->name) != 0)
+                    if (!args_cli.interface || strcmp(args_cli.interface, temp->name) == 0)
+                        interfaces_to_be_sniffed.push_back(temp);
             }
         }
 
     }
 
-    for (pcap_if_t *interface : interfaces_to_be_sniffed) {
-        pid_t pid = fork();
-
-        if (pid == 0) {  // child
-            int_to_be_sniffed = interface;
-            sniff_for_client();
-            exit(0);
-        } else if (pid > 0) { //parent
-            continue;
-        } else {            // fork failed
-            err(1, "fork() failed!\n");
+    if (interfaces_to_be_sniffed.empty()) {
+        if (args_cli.interface) {
+            fprintf(stderr, "ERROR interface doesn't exist or doesn't have IPv6 address : %s\n", args_cli.interface);
+            print_usage();
+            exit(1);
+        } else {
+            fprintf(stderr, "ERROR cant find interface with IPv6 address\n");
+            exit(2);
         }
     }
 
+    thread threads[interfaces_to_be_sniffed.size()];
+    int i = 0;
+    for (pcap_if_t *interface : interfaces_to_be_sniffed) {
+        threads[i] = thread(sniff_for_client, interface);
+        i++;
+    }
 
     thread th_server(server_service, server);
 
     th_server.join();
-    sleep(10000);
+    closelog();
     return 0;
 }
 
-void sniff_for_client() {
+void sniff_for_client(pcap_if_t *int_to_be_sniffed) {
     pcap_t *handle;
     struct bpf_program fp;
     char errbuff[PCAP_ERRBUF_SIZE];
-    pcap_addr_t *dev_addr;
-
-    for (dev_addr = int_to_be_sniffed->addresses; dev_addr != NULL; dev_addr = dev_addr->next) {
-        if (dev_addr->addr->sa_family == AF_INET6 && dev_addr->addr && dev_addr->netmask) {
-            ip6_link_address = ((struct sockaddr_in6 *) dev_addr->addr)->sin6_addr;
-            break;
-        }
-    }
 
     if (!int_to_be_sniffed) {
         err(1, "Can't find device for sniffing");
@@ -158,7 +209,7 @@ void sniff_for_client() {
     if (pcap_setfilter(handle, &fp) == -1)
         err(1, "pcap_setfilter() failed");
 
-    if (pcap_loop(handle, -1, mypcap_handler, NULL) == -1)
+    if (pcap_loop(handle, -1, mypcap_handler, (u_char *) int_to_be_sniffed) == -1)
         err(1, "pcap_loop() failed");
 
     pcap_close(handle);
@@ -170,6 +221,17 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
     struct ether_header *eth_h;
     struct udphdr *udp_h;
 
+    pcap_addr_t *dev_addr;
+    struct in6_addr ip6_link_address;
+    char *interface_name = ((pcap_if_t *) args)->name;
+
+    for (dev_addr = ((pcap_if_t *) args)->addresses; dev_addr != NULL; dev_addr = dev_addr->next) {
+        if (dev_addr->addr->sa_family == AF_INET6 && dev_addr->addr && dev_addr->netmask) {
+            ip6_link_address = ((struct sockaddr_in6 *) dev_addr->addr)->sin6_addr;
+            break;
+        }
+    }
+
     eth_h = (struct ether_header *) packet;
 
     if (ntohs(eth_h->ether_type) != ETHERTYPE_IPV6) {
@@ -180,33 +242,22 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
     char ip6_string[INET6_ADDRSTRLEN];
     memset(ip6_string, 0, sizeof(ip6_string));
     inet_ntop(AF_INET6, &ip6_h->saddr, ip6_string, sizeof(ip6_string));
-    printf("From: interface: %s address: %s\n", int_to_be_sniffed->name, ip6_string);
-
 
     udp_h = (struct udphdr *) get_udph_from_ipv6h(ip6_h); // pointer to the UDP header
-    //printf("\tSrc port = %d, dst port = %d, length %d\n", ntohs(udp_h->uh_sport), ntohs(udp_h->uh_dport),
-    //       ntohs(udp_h->uh_ulen));
 
-    /* //print udp content
-    unsigned char data[ntohs(udp_h->uh_ulen) - UDP_HDRLEN];
-    memcpy(data, (char *)udp_h + UDP_HDRLEN, ntohs(udp_h->uh_ulen) - UDP_HDRLEN);
-    for (unsigned int i = 0; i < ntohs(udp_h->uh_ulen) - UDP_HDRLEN; ++i) {
-        printf("%02x\n", data[i]);
-    }*/
 
-    //creating message for server
-
+    //check message types that should be relayed
     uint8_t msg_type;
     memcpy(&msg_type, (char *) udp_h + UDP_HDRLEN, 1);
     if (msg_type != 1 && msg_type != 3 && msg_type != 4 && msg_type != 5 && msg_type != 6 && msg_type != 8 &&
         msg_type != 9 && msg_type != 11) {
-        printf("dont want to forward msg_type %d\n", msg_type);
         return;
     }
+
     int forward_message_len =
             sizeof(t_relay_forward_message) + sizeof(t_relay_option_relay_message) + ntohs(udp_h->uh_ulen) -
             UDP_HDRLEN + sizeof(t_relay_option_ll_address) + sizeof(t_relay_option_relay_message) +
-            strlen(int_to_be_sniffed->name);
+            strlen(interface_name);
     t_relay_forward_message *forward_message = (t_relay_forward_message *) malloc(forward_message_len);
 
     if (forward_message == NULL) {
@@ -235,10 +286,17 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 
     t_relay_option_relay_message *o_interface_id = (t_relay_option_relay_message *) ((char *) o_link_layer +
                                                                                      sizeof(t_relay_option_ll_address));
-
     o_interface_id->option_code = htons(OPTION_INTERFACE_ID);
-    o_interface_id->length = htons(strlen(int_to_be_sniffed->name));
-    memcpy(o_interface_id->option_data, int_to_be_sniffed->name, strlen(int_to_be_sniffed->name));
+    o_interface_id->length = htons(strlen(interface_name));
+    memcpy(o_interface_id->option_data, interface_name, strlen(interface_name));
+
+    char ip6_peer[INET6_ADDRSTRLEN];
+    inet_ntop(AF_INET6, &ip6_h->saddr, ip6_peer, INET6_ADDRSTRLEN);
+    string peer_addr = ip6_peer;
+
+    string mac_addr = (ether_ntoa((const struct ether_addr *) &eth_h->ether_shost));
+    mac_addr_map.insert({peer_addr, mac_addr});
+
     int sock_send_to_server;
 
     if ((sock_send_to_server = socket(PF_INET6, SOCK_DGRAM, 0)) < 0) {
@@ -249,7 +307,7 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
     struct sockaddr_in6 server;
     memset(&server, 0, sizeof(server));
     server.sin6_family = AF_INET6;
-    inet_pton(AF_INET6, SERVADDR, &server.sin6_addr);
+    inet_pton(AF_INET6, args_cli.server_arg, &server.sin6_addr);
     socklen_t server_length = sizeof(server);
 
     server.sin6_port = htons(PORT);
@@ -292,36 +350,43 @@ void process_msg_from_server(const char *buffer, int read_count) {
     if (!relay_message)
         err(1, "Don't have enough information from server");
 
-    int fd;
-    if ((fd = socket(AF_INET6, SOCK_DGRAM, 0)) < 0)
+    uint8_t msg_type;
+    memcpy(&msg_type, relay_message->option_data, 1);
+    if (msg_type == 7) {
+        char ip6[INET6_ADDRSTRLEN];
+        inet_ntop(AF_INET6, &mess_relay_reply->peer_addr, ip6, INET6_ADDRSTRLEN);
+        string peer_addr = ip6;
+
+        inet_ntop(AF_INET6, ((char *) relay_message->option_data + 24), ip6, INET6_ADDRSTRLEN);
+        string output = mac_addr_map.find(peer_addr)->second + ',' + ip6;
+        if (args_cli.debug_enabled)
+            cout << output << endl;
+        if (args_cli.log_enabled)
+            syslog(LOG_INFO, "%s", output.c_str());
+
+    }
+    int socket_send_to_client;
+    if ((socket_send_to_client = socket(AF_INET6, SOCK_DGRAM, 0)) < 0)
         err(1, "socket()");
 
-    struct sockaddr_in6 address;
-    memset(&address, 0, sizeof(address));
-    address.sin6_family = AF_INET6;
-    address.sin6_port = htons(PORT_CLIENT);
+    struct sockaddr_in6 address{.sin6_family = AF_INET6, .sin6_port = htons(PORT_CLIENT)};
 
     struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
 
     if (interface_name[0] != '\0') {
-        snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "%s", interface_name);
-        if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, (void *) &ifr, sizeof(ifr)) < 0) {
+        memcpy(ifr.ifr_name, interface_name, sizeof(ifr.ifr_name));
+        if (setsockopt(socket_send_to_client, SOL_SOCKET, SO_BINDTODEVICE, (void *) &ifr, sizeof(ifr)) < 0) {
             err(1, "setsockopt()");
         }
     }
 
     memcpy(&address.sin6_addr, &mess_relay_reply->peer_addr, 16);
 
-    char ip6_string[INET6_ADDRSTRLEN];
-    memset(ip6_string, 0, sizeof(ip6_string));
-    inet_ntop(AF_INET6, &address.sin6_addr, ip6_string, sizeof(ip6_string));
-    printf("To client: %s\n", ip6_string);
-
-    if (sendto(fd, relay_message->option_data,
+    if (sendto(socket_send_to_client, relay_message->option_data,
                ntohs(relay_message->length), 0, (struct sockaddr *) &address, sizeof(address)) < 0)
         err(1, "sendto() client");
-    close(fd);
+    close(socket_send_to_client);
 }
 
 void server_service(struct sockaddr_in6 server) {
@@ -332,17 +397,13 @@ void server_service(struct sockaddr_in6 server) {
         err(1, "can't create socket");
     }
 
-    struct sockaddr_in6 srcaddr;
-
-    memset(&srcaddr, 0, sizeof(srcaddr));
-    srcaddr.sin6_family = AF_INET6;
+    struct sockaddr_in6 srcaddr = {.sin6_family = AF_INET6, .sin6_port = htons(PORT)};
     srcaddr.sin6_addr = in6addr_any;
-    srcaddr.sin6_port = htons(PORT);
+
 
     if (bind(sock_recv_from_server, (struct sockaddr *) &srcaddr, sizeof(srcaddr)) < 0) {
         err(1, "bind()");
     }
-
 
     char buffer[BUFF_SIZE] = {0,};
     int read_count;
@@ -354,13 +415,7 @@ void server_service(struct sockaddr_in6 server) {
                               &server_length)) < 0) {
             err(1, "rcvfrom()");
         }
-        /* print content of response
-        for (int i = 0; i < BUFF_SIZE; ++i) {
-            printf("%02x ",buffer[i]);
-        }*/
-
         process_msg_from_server(buffer, read_count);
-
     }
     close(sock_recv_from_server);
 }
