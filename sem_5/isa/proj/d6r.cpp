@@ -6,14 +6,12 @@
 #include <cstdlib>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <netinet/udp.h>
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <netinet/if_ether.h>
 #include <err.h>
 #include <netinet/ether.h>
 #include <pcap/pcap.h>
-#include <linux/ipv6.h>
 #include <cstring>
 #include <unistd.h>
 #include <syslog.h>
@@ -48,6 +46,27 @@ using namespace std;
 
 map<string, string> mac_addr_map;
 
+//HEADER FROM netinet/udp.h
+struct udphdr {
+    u_short	uh_sport;		/* source port */
+    u_short	uh_dport;		/* destination port */
+    short	uh_ulen;		/* udp length */
+    u_short	uh_sum;			/* udp checksum */
+};
+
+//HEADER FROM linux/ipv6.h
+struct ipv6hdr {
+    __u8	priority:4,
+            version:4;
+    __u8	flow_lbl[3];
+    __be16			payload_len;
+    __u8			nexthdr;
+    __u8			hop_limit;
+
+    struct	in6_addr	saddr;
+    struct	in6_addr	daddr;
+};
+
 typedef struct arguments {
     char *server_arg;
     char *interface;
@@ -65,11 +84,11 @@ typedef struct relay_forward_message {
     uint8_t options[];
 } t_relay_forward_message;
 
-typedef struct relay_option_relay_message {
+typedef struct relay_option {
     uint16_t option_code;
     uint16_t length;
     uint8_t option_data[];
-} t_relay_option_relay_message;
+} t_relay_option;
 
 typedef struct relay_option_ll_address {
     uint16_t option_code;
@@ -79,7 +98,7 @@ typedef struct relay_option_ll_address {
 } t_relay_option_ll_address;
 
 
-void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char *packet);
+void handle_packet_from_client(u_char *args, const struct pcap_pkthdr *header, const u_char *packet);
 
 void sniff_for_client(pcap_if_t *int_to_be_sniffed);
 
@@ -217,14 +236,14 @@ void sniff_for_client(pcap_if_t *int_to_be_sniffed) {
     if (pcap_setfilter(handle, &fp) == -1)
         err(1, "pcap_setfilter() failed");
 
-    if (pcap_loop(handle, -1, mypcap_handler, (u_char *) int_to_be_sniffed) == -1)
+    if (pcap_loop(handle, -1, handle_packet_from_client, (u_char *) int_to_be_sniffed) == -1)
         err(1, "pcap_loop() failed");
 
     pcap_close(handle);
 
 }
 
-void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char *packet) {
+void handle_packet_from_client(u_char *args, const struct pcap_pkthdr *header, const u_char *packet) {
     struct ipv6hdr *ip6_h;
     struct ether_header *eth_h;
     struct udphdr *udp_h;
@@ -263,8 +282,8 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
     }
 
     int forward_message_len =
-            sizeof(t_relay_forward_message) + sizeof(t_relay_option_relay_message) + ntohs(udp_h->uh_ulen) -
-            UDP_HDRLEN + sizeof(t_relay_option_ll_address) + sizeof(t_relay_option_relay_message) +
+            sizeof(t_relay_forward_message) + sizeof(t_relay_option) + ntohs(udp_h->uh_ulen) -
+            UDP_HDRLEN + sizeof(t_relay_option_ll_address) + sizeof(t_relay_option) +
             strlen(interface_name);
     t_relay_forward_message *forward_message = (t_relay_forward_message *) malloc(forward_message_len);
 
@@ -276,15 +295,15 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
     memcpy(forward_message->peer_addr, &ip6_h->saddr, 16);
     memcpy(forward_message->link_addr, &ip6_link_address, 16);
 
-    t_relay_option_relay_message *o_relay_message = (t_relay_option_relay_message *) ((char *) forward_message +
-                                                                                      sizeof(t_relay_forward_message));
+    t_relay_option *o_relay_message = (t_relay_option *) ((char *) forward_message +
+                                                          sizeof(t_relay_forward_message));
     //fill relay message
     o_relay_message->option_code = htons(OPTION_RELAY_MSG);
     o_relay_message->length = htons(ntohs(udp_h->uh_ulen) - UDP_HDRLEN);
     memcpy(o_relay_message->option_data, (char *) udp_h + UDP_HDRLEN, ntohs(udp_h->uh_ulen) - UDP_HDRLEN);
 
     t_relay_option_ll_address *o_link_layer = (t_relay_option_ll_address *) ((char *) o_relay_message +
-                                                                             (sizeof(t_relay_option_relay_message) +
+                                                                             (sizeof(t_relay_option) +
                                                                               ntohs(o_relay_message->length)));
     //fill MAC address
     o_link_layer->option_code = htons(OPTION_CLIENT_LINKLAYER_ADDR);
@@ -292,8 +311,8 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
     o_link_layer->link_layer_type = htons(1);
     memcpy(o_link_layer->mac_addr, eth_h->ether_shost, ETH_ALEN);
 
-    t_relay_option_relay_message *o_interface_id = (t_relay_option_relay_message *) ((char *) o_link_layer +
-                                                                                     sizeof(t_relay_option_ll_address));
+    t_relay_option *o_interface_id = (t_relay_option *) ((char *) o_link_layer +
+                                                         sizeof(t_relay_option_ll_address));
     o_interface_id->option_code = htons(OPTION_INTERFACE_ID);
     o_interface_id->length = htons(strlen(interface_name));
     memcpy(o_interface_id->option_data, interface_name, strlen(interface_name));
@@ -336,9 +355,9 @@ void process_msg_from_server(const char *buffer, int read_count) {
     size_t i = sizeof(t_relay_forward_message);
     char interface_name[16] = {};
 
-    t_relay_option_relay_message *option = (t_relay_option_relay_message *) (buffer +
-                                                                             sizeof(t_relay_forward_message));
-    t_relay_option_relay_message *relay_message = NULL;
+    t_relay_option *option = (t_relay_option *) (buffer +
+                                                 sizeof(t_relay_forward_message));
+    t_relay_option *relay_message = NULL;
     while (true) {
         switch (ntohs(option->option_code)) {
             case OPTION_INTERFACE_ID:
@@ -348,11 +367,11 @@ void process_msg_from_server(const char *buffer, int read_count) {
                 relay_message = option;
                 break;
         }
-        i += ntohs(option->length) + sizeof(t_relay_option_relay_message);
+        i += ntohs(option->length) + sizeof(t_relay_option);
         if (i >= read_count || (relay_message && interface_name[0] != '\0'))
             break;
-        option = (t_relay_option_relay_message *) ((char *) option + sizeof(t_relay_option_relay_message) +
-                                                   ntohs(option->length));
+        option = (t_relay_option *) ((char *) option + sizeof(t_relay_option) +
+                                     ntohs(option->length));
     }
 
     if (!relay_message)
@@ -363,8 +382,8 @@ void process_msg_from_server(const char *buffer, int read_count) {
     uint8_t msg_type;
     memcpy(&msg_type, relay_message->option_data, 1);
     if (msg_type == OPTION_REPLY) {
-        t_relay_option_relay_message *address_option = NULL;
-        option = (t_relay_option_relay_message *) ((char *) relay_message + 8); //jump over reply and transaction id
+        t_relay_option *address_option = NULL;
+        option = (t_relay_option *) ((char *) relay_message + 8); //jump over reply and transaction id
         i = (char *) option - (char *) buffer; //actual offset in APP data
         while (true) { //Check for address options in reply message
             switch (ntohs(option->option_code)) {
@@ -374,11 +393,11 @@ void process_msg_from_server(const char *buffer, int read_count) {
                     address_option = option;
                     break;
             }
-            i += ntohs(option->length) + sizeof(t_relay_option_relay_message);
+            i += ntohs(option->length) + sizeof(t_relay_option);
             if (i >= read_count || address_option)
                 break;
-            option = (t_relay_option_relay_message *) ((char *) option + sizeof(t_relay_option_relay_message) +
-                                                       ntohs(option->length));
+            option = (t_relay_option *) ((char *) option + sizeof(t_relay_option) +
+                                         ntohs(option->length));
         }
 
         if (address_option) {
@@ -392,8 +411,8 @@ void process_msg_from_server(const char *buffer, int read_count) {
                 offset = 16;
 
             //---------find IAAA Adress-----
-            option = (t_relay_option_relay_message *) ((char *) address_option +
-                                                       offset); //jump over fields in IA_NA or IA_TA
+            option = (t_relay_option *) ((char *) address_option +
+                                         offset); //jump over fields in IA_NA or IA_TA
             i = (char *) option - (char *) buffer; //actual offset in APP data
             while (true) { //Check for address options in reply message
                 switch (ntohs(option->option_code)) {
@@ -404,11 +423,11 @@ void process_msg_from_server(const char *buffer, int read_count) {
                         added_ipv6 = ((char *) option + 13); //jump over fields in IA PREFIX OPTION
                         memcpy(&prefix, ((char *) option + 12 ), 1);
                 }
-                i += ntohs(option->length) + sizeof(t_relay_option_relay_message);
+                i += ntohs(option->length) + sizeof(t_relay_option);
                 if (i >= read_count || added_ipv6)
                     break;
-                option = (t_relay_option_relay_message *) ((char *) option + sizeof(t_relay_option_relay_message) +
-                                                           ntohs(option->length));
+                option = (t_relay_option *) ((char *) option + sizeof(t_relay_option) +
+                                             ntohs(option->length));
             }
             //------------------------------
             char ip6[INET6_ADDRSTRLEN];

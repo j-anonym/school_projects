@@ -15,6 +15,7 @@ $(NAME): $(OBJECTS)
 run:
 	./$(NAME)
 
+clear: clean
 clean:
 	rm -f $(NAME) *.o
 
