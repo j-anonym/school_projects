@@ -32,7 +32,14 @@ using namespace std;
 #define CAPTURE_FILTER "udp port 547"
 #define OPTION_RELAY_MSG (9) //see RFC 8415
 #define OPTION_INTERFACE_ID (18) //see RFC 8415
+#define  OPTION_IA_NA (3)
+#define  OPTION_IA_TA (4)
+#define OPTION_IAADDR (5)
+#define OPTION_IA_PD (25)
+#define OPTION_IAPREFIX (26)
 #define OPTION_CLIENT_LINKLAYER_ADDR (79) //see RFC 6939
+#define OPTION_REPLY (7)
+
 
 #define BUFF_SIZE (1024)
 
@@ -70,6 +77,7 @@ typedef struct relay_option_ll_address {
     uint16_t link_layer_type;
     uint8_t mac_addr[ETH_ALEN];
 } t_relay_option_ll_address;
+
 
 void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char *packet);
 
@@ -325,7 +333,7 @@ void process_msg_from_server(const char *buffer, int read_count) {
         err(1, "wrong response from server, expected msg_type 13, got %d", mess_relay_reply->msg_type);
     }
 
-    int i = sizeof(t_relay_forward_message);
+    size_t i = sizeof(t_relay_forward_message);
     char interface_name[16] = {};
 
     t_relay_option_relay_message *option = (t_relay_option_relay_message *) (buffer +
@@ -340,8 +348,8 @@ void process_msg_from_server(const char *buffer, int read_count) {
                 relay_message = option;
                 break;
         }
-        i += ntohs(option->length);
-        if (i > read_count || (relay_message && interface_name[0] != '\0'))
+        i += ntohs(option->length) + sizeof(t_relay_option_relay_message);
+        if (i >= read_count || (relay_message && interface_name[0] != '\0'))
             break;
         option = (t_relay_option_relay_message *) ((char *) option + sizeof(t_relay_option_relay_message) +
                                                    ntohs(option->length));
@@ -350,20 +358,74 @@ void process_msg_from_server(const char *buffer, int read_count) {
     if (!relay_message)
         err(1, "Don't have enough information from server");
 
+
+    //Additional processing for REPLY message
     uint8_t msg_type;
     memcpy(&msg_type, relay_message->option_data, 1);
-    if (msg_type == 7) {
-        char ip6[INET6_ADDRSTRLEN];
-        inet_ntop(AF_INET6, &mess_relay_reply->peer_addr, ip6, INET6_ADDRSTRLEN);
-        string peer_addr = ip6;
+    if (msg_type == OPTION_REPLY) {
+        t_relay_option_relay_message *address_option = NULL;
+        option = (t_relay_option_relay_message *) ((char *) relay_message + 8); //jump over reply and transaction id
+        i = (char *) option - (char *) buffer; //actual offset in APP data
+        while (true) { //Check for address options in reply message
+            switch (ntohs(option->option_code)) {
+                case OPTION_IA_NA:
+                case OPTION_IA_TA:
+                case OPTION_IA_PD:
+                    address_option = option;
+                    break;
+            }
+            i += ntohs(option->length) + sizeof(t_relay_option_relay_message);
+            if (i >= read_count || address_option)
+                break;
+            option = (t_relay_option_relay_message *) ((char *) option + sizeof(t_relay_option_relay_message) +
+                                                       ntohs(option->length));
+        }
 
-        inet_ntop(AF_INET6, ((char *) relay_message->option_data + 24), ip6, INET6_ADDRSTRLEN);
-        string output = mac_addr_map.find(peer_addr)->second + ',' + ip6;
-        if (args_cli.debug_enabled)
-            cout << output << endl;
-        if (args_cli.log_enabled)
-            syslog(LOG_INFO, "%s", output.c_str());
+        if (address_option) {
+            char *added_ipv6 = NULL;
+            uint8_t prefix = 0;
 
+            size_t offset = 0;
+            if (ntohs(address_option->option_code) == OPTION_IA_TA)
+                offset = 8;
+            else
+                offset = 16;
+
+            //---------find IAAA Adress-----
+            option = (t_relay_option_relay_message *) ((char *) address_option +
+                                                       offset); //jump over fields in IA_NA or IA_TA
+            i = (char *) option - (char *) buffer; //actual offset in APP data
+            while (true) { //Check for address options in reply message
+                switch (ntohs(option->option_code)) {
+                    case OPTION_IAADDR:
+                        added_ipv6 = ((char *) option + 4); //jump over fields in IA ADDRESS OPTION
+                        break;
+                    case OPTION_IAPREFIX:
+                        added_ipv6 = ((char *) option + 13); //jump over fields in IA PREFIX OPTION
+                        memcpy(&prefix, ((char *) option + 12 ), 1);
+                }
+                i += ntohs(option->length) + sizeof(t_relay_option_relay_message);
+                if (i >= read_count || added_ipv6)
+                    break;
+                option = (t_relay_option_relay_message *) ((char *) option + sizeof(t_relay_option_relay_message) +
+                                                           ntohs(option->length));
+            }
+            //------------------------------
+            char ip6[INET6_ADDRSTRLEN];
+            inet_ntop(AF_INET6, &mess_relay_reply->peer_addr, ip6, INET6_ADDRSTRLEN);
+            string peer_addr = ip6;
+
+            inet_ntop(AF_INET6, added_ipv6, ip6, INET6_ADDRSTRLEN);
+            string output = mac_addr_map.find(peer_addr)->second + ',' + ip6;
+            if (prefix > 0)
+                output = output + (char) 47 + to_string(prefix);
+            if (args_cli.debug_enabled)
+                cout << output << endl;
+            if (args_cli.log_enabled)
+                syslog(LOG_INFO, "%s", output.c_str());
+
+
+        }
     }
     int socket_send_to_client;
     if ((socket_send_to_client = socket(AF_INET6, SOCK_DGRAM, 0)) < 0)
