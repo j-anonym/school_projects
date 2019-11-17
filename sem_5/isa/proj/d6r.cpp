@@ -221,7 +221,6 @@ int main(int argc, char *argv[]) {
 }
 
 void sniff_for_client(pcap_if_t *int_to_be_sniffed) {
-    cout << int_to_be_sniffed->name << endl;
     pcap_t *handle;
     struct bpf_program fp;
     char errbuff[PCAP_ERRBUF_SIZE];
