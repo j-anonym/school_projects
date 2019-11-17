@@ -204,21 +204,24 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    thread threads[interfaces_to_be_sniffed.size()];
+    thread threadss[interfaces_to_be_sniffed.size()];
     int i = 0;
     for (pcap_if_t *interface : interfaces_to_be_sniffed) {
-        threads[i] = thread(sniff_for_client, interface);
+        threadss[i] = thread(sniff_for_client, interface);
+        threadss[i].detach();
         i++;
     }
 
     thread th_server(server_service, server);
 
     th_server.join();
+
     closelog();
     return 0;
 }
 
 void sniff_for_client(pcap_if_t *int_to_be_sniffed) {
+    cout << int_to_be_sniffed->name << endl;
     pcap_t *handle;
     struct bpf_program fp;
     char errbuff[PCAP_ERRBUF_SIZE];
@@ -435,9 +438,10 @@ void process_msg_from_server(const char *buffer, int read_count) {
             string peer_addr = ip6;
 
             inet_ntop(AF_INET6, added_ipv6, ip6, INET6_ADDRSTRLEN);
-            string output = mac_addr_map.find(peer_addr)->second + ',' + ip6;
+            string output = ip6;
             if (prefix > 0)
                 output = output + (char) 47 + to_string(prefix);
+            output = output + "," + mac_addr_map.find(peer_addr)->second;
             if (args_cli.debug_enabled)
                 cout << output << endl;
             if (args_cli.log_enabled)
