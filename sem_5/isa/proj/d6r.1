@@ -1,0 +1,28 @@
+.TH d6r 1
+.SH NAME
+d6r \- DHCPv6 relay
+.SH SYNOPSIS
+.B d6r
+[\fB\-s\fR \f IPv6 serveru\fR]
+[\fB\-i\fR \f názov_interfacu\fR]
+[\fB\-l\fR]
+[\fB\-d\fR]
+.SH DESCRIPTION
+DHCP relay agent je aplikácia ktorá slúži na preposielanie žiadostí a odpovedí medzi DHCPv6 serverom a klientom, ak sa server nachádza na inej podsieti ako klient.
+
+.SH OPTIONS
+.TP
+.BR "\-s "IPv6serveru
+Nastavi IPv6 adresu DHCPv6 serveru kam bude relay preposielať DHCPv6 správy od klienta
+
+.TP
+.BR "\-i "názov_rozhrania
+Nastaví rozhranie na ktorom má relay očakávať DHCPv6 správy. V prípade absencie tohto parametru, relay očakáva správy na všetkých rozhraniach.
+
+.TP
+.BR "\-d"
+Prepínač má za úlohu zapnúť logovanie do syslogu
+
+.TP
+.BR "\-l"
+Prepínač má za úlohu zapnúť logovanie na stdout
