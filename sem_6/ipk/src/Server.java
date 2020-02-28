@@ -22,9 +22,9 @@ public class Server {
             try (Socket client = serverSocket.accept()) {
 
                 Handler handler = new Handler(client);
-                Thread t = new Thread(handler);
-                t.start();
-                handler.run();
+//                Thread t = new Thread(handler);
+//                t.start();
+                    handler.run();
             } catch (Exception e) {
                 e.printStackTrace();
             }

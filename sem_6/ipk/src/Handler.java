@@ -30,7 +30,7 @@ class Handler implements Runnable {
 
             Request request = new Request(in);
             if (!request.parse()) {
-                respond(500, "Unable to parse request", out);
+                respond(500, "Can't parse request", out);
                 return;
             }
 
@@ -95,7 +95,7 @@ class Handler implements Runnable {
                     .forEach(response::addBody);
 
         } catch (RuntimeException e) {
-            System.out.println("nemas bodkociarku");
+            System.out.println("nemas bodkociarku"); //TODO delete
             respond(400, "Bad Request", socket.getOutputStream());
             return;
         }

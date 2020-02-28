@@ -85,16 +85,15 @@ public class Request {
             }
             String header = headerLine.substring(0, separator);
             String header_value = headerLine.substring(separator + 1);
-            headers.put(header, header_value);
-            if (method.equals("POST") && header.toLowerCase().equals("content-length")) {
-                contentLength = Integer.valueOf(header_value.trim());
-                char[] body = new char[contentLength];
-                in.readLine();
-                if (in.read(body, 0, contentLength) != contentLength)
-                    return false;
-                this.body = new String(body);
-                break;
-            }
+            headers.put(header.toLowerCase(), header_value);
+        }
+
+        if (method.equals("POST") && headers.containsKey("content-length")) {
+            contentLength = Integer.valueOf(headers.get("content-length").trim());
+            char[] body = new char[contentLength];
+            if (in.read(body, 0, contentLength) != contentLength)
+                return false;
+            this.body = new String(body);
         }
 
         if (!components[1].contains("?")) {

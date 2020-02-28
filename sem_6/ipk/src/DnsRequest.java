@@ -1,3 +1,4 @@
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
@@ -15,20 +16,26 @@ public class DnsRequest {
     public String getResult() {
         StringBuilder result = new StringBuilder(String.format("%s:%s=", name, type));
 
-        InetAddress host;
+        InetAddress[] hostAdresses;
         try {
-            host = InetAddress.getByName(name);
+            hostAdresses = InetAddress.getAllByName(name);
         } catch (UnknownHostException e) {
             return null;
         }
-        if (type.equals("PTR")) {
-            if (host.getHostName().equals(name)) //cant find hostname, getHostName() returns ip addr
-                return null;
-            result.append(host.getHostName());
-        } else if (type.equals("A")) {
-            if (isIpv4(name))
-                return null;
-            result.append(host.getHostAddress());
+        for (var host: hostAdresses) {
+            if ((host instanceof Inet6Address))
+                continue;
+            if (type.equals("PTR")) {
+                if (host.getHostName().equals(name)) //cant find hostname, getHostName() returns ip addr
+                    return null;
+                result.append(host.getHostName());
+                break;
+            } else if (type.equals("A")) {
+                if (isIpv4(name))
+                    return null;
+                result.append(host.getHostAddress());
+                break;
+            }
         }
         return result.toString();
     }
