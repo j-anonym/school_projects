@@ -1,11 +1,11 @@
 CURDIR=`pwd`
 SOURCEDIR=$(CURDIR)/src
-CLASSPATHS=$(SOURCEDIR):$(SOURCEDIR)/socket_com/lib/json-20180813.jar
+CLASSPATHS=$(SOURCEDIR)
 
 build:
-	javac -classpath $(CLASSPATHS) src/socket_com/Main.java
+	javac $(SOURCEDIR)/*.java
 	
 run: build
-	java -classpath $(CLASSPATHS) socket_com.Main ${api_key} ${city}
+	java -classpath $(CLASSPATHS) Main ${PORT}
 clean:
-	rm *.class
+	rm $(SOURCEDIR)/*.class
