@@ -1,11 +1,13 @@
 CURDIR=`pwd`
 SOURCEDIR=$(CURDIR)/src
-CLASSPATHS=$(SOURCEDIR)
+CLASSPATH=$(SOURCEDIR)
 
 build:
 	javac $(SOURCEDIR)/*.java
 	
 run: build
-	java -classpath $(CLASSPATHS) Main ${PORT}
+	java -classpath $(CLASSPATH) Main ${PORT}
 clean:
 	rm $(SOURCEDIR)/*.class
+zip:
+	zip xvavro05.zip src/*.java Makefile readme.md
