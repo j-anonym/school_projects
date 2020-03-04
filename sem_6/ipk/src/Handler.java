@@ -95,7 +95,6 @@ class Handler implements Runnable {
                     .forEach(response::addBody);
 
         } catch (RuntimeException e) {
-            System.out.println("nemas bodkociarku"); //TODO delete
             respond(400, "Bad Request", socket.getOutputStream());
             return;
         }

@@ -17,19 +17,16 @@ public class Server {
         } catch (IOException e) {
             System.err.println("Cant create socket for server");
         }
-
-        while (true) {
-            try (Socket client = serverSocket.accept()) {
+        Socket client;
+        try {
+            while ((client = serverSocket.accept()) != null) {
 
                 Handler handler = new Handler(client);
-//                Thread t = new Thread(handler);
-//                t.start();
-                    handler.run();
-            } catch (Exception e) {
-                e.printStackTrace();
+                Thread t = new Thread(handler);
+                t.start();
             }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
-
-
 }

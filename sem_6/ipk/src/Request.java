@@ -58,7 +58,6 @@ public class Request {
 
             return false;
         }
-        System.out.println(initialLine);
         StringTokenizer tok = new StringTokenizer(initialLine);
         String[] components = new String[3];
         for (int i = 0; i < components.length; i++) {
