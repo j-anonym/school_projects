@@ -30,7 +30,7 @@ class Handler implements Runnable {
 
             Request request = new Request(in);
             if (!request.parse()) {
-                respond(500, "Can't parse request", out);
+                respond(400, "Bad Request", out);
                 return;
             }
 

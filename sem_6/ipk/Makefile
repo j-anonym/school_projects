@@ -10,4 +10,5 @@ run: build
 clean:
 	rm $(SOURCEDIR)/*.class
 zip:
+	rm xvavro05.zip
 	zip xvavro05.zip src/*.java Makefile readme.md

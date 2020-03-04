@@ -89,10 +89,17 @@ public class Request {
 
         if (method.equals("POST") && headers.containsKey("content-length")) {
             contentLength = Integer.valueOf(headers.get("content-length").trim());
+            if (contentLength < 2)
+                return false;
             char[] body = new char[contentLength];
             if (in.read(body, 0, contentLength) != contentLength)
                 return false;
-            this.body = new String(body);
+            if (body[contentLength - 2] == '\n') { //if last character of body is new-line delete it
+                contentLength--;
+                this.body = new String(body).substring(0, contentLength - 1);
+            } else {
+                this.body = new String(body);
+            }
         }
 
         if (!components[1].contains("?")) {
