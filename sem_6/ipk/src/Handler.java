@@ -99,6 +99,11 @@ class Handler implements Runnable {
             return;
         }
 
+        if (response.getBody().isEmpty()) {
+            respond(404, "Not Found", socket.getOutputStream());
+            return;
+        }
+
         response.setResponseCode(200, "OK");
         response.addHeader("Content-Type", "text/plain");
         response.send();

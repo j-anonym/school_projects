@@ -14,6 +14,11 @@ public class Response  {
     private String statusMessage;
     private Map<String, String> headers = new HashMap<>();
     private int contentLength = 0;
+
+    public List<String> getBody() {
+        return body;
+    }
+
     private List<String> body = new ArrayList<>();
 
     public Response(OutputStream out)  {
