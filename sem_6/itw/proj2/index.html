@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+
+
+<head>
+	<meta charset="utf-8">
+	<title>John Doe</title>
+	<link rel="stylesheet" type="text/css" href="itw2.css">
+	<script type="text/javascript" src="proj2.js"></script>
+</head>
+
+<body id="top">
+	<nav id="navigation">
+		<a href="#top">
+			<h2 id="nav-title">Biography</h2>
+		</a>
+		<ul id="nav-menu">
+			<li><a href="#about">about</a></li>
+			<li><a href="#education">education</a></li>
+			<li><a href="#skills">skills</a></li>
+			<li><a href="#interests">interests</a></li>
+		</ul>
+		<img src="img/menu.png" alt="Menu" class="menu-image" onclick="showMenuItems()" />
+	</nav>
+
+	<div class="container">
+		<section id="about">
+			<div class="content">
+				<div class="name-photo">
+					<h1>
+						John <span class="text-primary">Doe</span>
+					</h1>
+					<img src="img/man.jpeg" alt="photo" class="photo" />
+				</div>
+				<div class="address">
+					17 Wakehurst Rd.Dacula, GA 30019
+				</div>
+				<div class="text">
+					Et harum quidem rerum facilis est et expedita distinctio. Nam libero tempore, cum soluta nobis est
+					eligendi optio cumque nihil impedit quo minus
+					id quod maxime placeat facere possimus, omnis voluptas assumenda est, omnis dolor repellendus.
+					Temporibus autem quibusdam et aut officiis debitis
+					aut rerum necessitatibus saepe eveniet ut et voluptates repudiandae sint et molestiae non
+					recusandae. Itaque earum rerum hic tenetur a sapiente delectus,
+					ut aut reiciendis voluptatibus maiores alias consequatur aut perferendis doloribus asperiores
+					repellat.
+				</div>
+			</div>
+		</section>
+		<section id="education">
+			<div class="content">
+				<h2 class="text-primary">education</h2>
+				<div class="education-cols">
+					<ul>
+						<li>
+							<div class="school">
+								<h3>UNIVERSITY OF COLORADO BOULDER</h3>
+								<p>BACHELOR OF SCIENCE</p>
+							</div>
+							<div class="date">August 2006 - May 2010</div>
+						</li>
+						<li>
+							<div class="school">
+								<h3>JAMES BUCHANAN HIGH SCHOOL</h3>
+								<p>TECHNOLOGY MAGNET PROGRAM</p>
+							</div>
+							<div class="date">August 2004 - May 2002</div>
+						</li>
+						<li>
+							<div class="school">
+								<h3>LINCOLN ELEMENTARY SCHOOL</h3>
+								<p>ELEMENTARY SCHOOL</p>
+							</div>
+							<div class="date">August 2000 - May 2002</div>
+						</li>
+				</div>
+		</section>
+		<section id="skills">
+			<div class="content">
+				<h2 class="text-primary">skills</h2>
+				<div class="one-skill">
+					<img src="img/programming.png" alt="programming" />
+					<p class="text">It is a long established fact that a reader will be distracted by the readable
+						content of a page when looking at its layout.
+						The point of using Lorem Ipsum is that it has a more-or-less normal distribution of letters, as
+						opposed to using 'Content here,
+						content here', making it look like readable English. Many desktop publishing packages and web
+						page editors now use Lorem Ipsum
+						as their default model text, and a search for 'lorem ipsum' will uncover many web sites still in
+						their infancy. Various versions
+						have evolved over the years, sometimes by accident, sometimes on purpose (injected humour and
+						the like).</p>
+
+				</div>
+				<div class="one-skill">
+					<img src="img/mobile.png" alt="telephone" />
+					<p class="text">It is a long established fact that a reader will be distracted by the readable
+						content of a page when looking at its layout.
+						The point of using Lorem Ipsum is that it has a more-or-less normal distribution of letters, as
+						opposed to using 'Content here,
+						content here', making it look like readable English. Many desktop publishing packages and web
+						page editors now use Lorem Ipsum
+						as their default model text, and a search for 'lorem ipsum' will uncover many web sites still in
+						their infancy. Various versions
+						have evolved over the years, sometimes by accident, sometimes on purpose (injected humour and
+						the like).</p>
+
+				</div>
+			</div>
+		</section>
+		<section id="interests">
+			<div class="content">
+				<h2 class="text-primary">interests</h2>
+
+				<div class="tab">
+					<button class="tab-links active" onclick="openInterest(event, 'Lifting')">Weight Lifting</button>
+					<button class="tab-links" onclick="openInterest(event, 'Climbing')">Ice Climbing</button>
+					<button class="tab-links" onclick="openInterest(event, 'Soccer')">Soccer</button>
+				</div>
+
+				<div id="Lifting" class="tab-content" style="display: block;">
+					<div class="interests-images">
+						<img src="img/lifting.png" alt="lifting"/>
+						<p class="text">It is a long established fact that a reader will be distracted by the readable
+							content of a page when looking at its layout.
+							The point of using Lorem Ipsum is that it has a more-or-less normal distribution of letters,
+							as opposed to using 'Content here,
+							content here', making it look like readable English. Many desktop publishing packages and
+							web page editors now use Lorem Ipsum
+							as their default model text, and a search for 'lorem ipsum' will uncover many web sites
+							still in their infancy. Various versions
+							have evolved over the years, sometimes by accident, sometimes on purpose (injected humour
+							and the like).</p>
+						<img src="img/lifting.png" alt="lifting" />
+					</div>
+				</div>
+
+				<div id="Climbing" class="tab-content">
+					<div class="interests-images">
+						<img src="img/climbing.jpg" alt="climbing" />
+						<p class="text">It is a long established fact that a reader will be distracted by the readable
+							content of a page when looking at its layout.
+							The point of using Lorem Ipsum is that it has a more-or-less normal distribution of letters,
+							as opposed to using 'Content here,
+							content here', making it look like readable English. Many desktop publishing packages and
+							web page editors now use Lorem Ipsum
+							as their default model text, and a search for 'lorem ipsum' will uncover many web sites
+							still in their infancy. Various versions
+							have evolved over the years, sometimes by accident, sometimes on purpose (injected humour
+							and the like).</p>
+						<img src="img/climbing.jpg" alt="climbing" />
+					</div>
+				</div>
+
+				<div id="Soccer" class="tab-content">
+					<div class="interests-images">
+
+						<img src="img/soccer.png" alt="soccer" />
+						<p class="text">It is a long established fact that a reader will be distracted by the readable
+							content of a page when looking at its layout.
+							The point of using Lorem Ipsum is that it has a more-or-less normal distribution of letters,
+							as opposed to using 'Content here,
+							content here', making it look like readable English. Many desktop publishing packages and
+							web page editors now use Lorem Ipsum
+							as their default model text, and a search for 'lorem ipsum' will uncover many web sites
+							still in their infancy. Various versions
+							have evolved over the years, sometimes by accident, sometimes on purpose (injected humour
+							and the like).</p>
+						<img src="img/soccer.png" alt="soccer" />
+					</div>
+				</div>
+
+		</section>
+	</div>
+</body>
